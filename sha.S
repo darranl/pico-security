@@ -1,4 +1,3 @@
-
 @ Copyright 2023, Darran A Lofthouse
 @
 @ This file is part of pico-security.
@@ -14,7 +13,7 @@
 @ You should have received a copy of the GNU General Public License along with pico-security.
 @ If  not, see <https://www.gnu.org/licenses/>. 
 
-@#define LOG_ARRAY
+#include "sha-debug.h"
 
 @ SHA Stack Space
 @   1 word  =   4 Bytes [Var TEMP]

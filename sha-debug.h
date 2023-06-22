@@ -14,13 +14,4 @@
  * If  not, see <https://www.gnu.org/licenses/>. 
  */
 
-/*****************/
-/* SHA Functions */
-/*****************/
-
-#include <stdio.h>
-#include "pico/stdlib.h"
-#include "sha-debug.h"
-
-extern void sha1_digest(char *data, uint32_t data_length, uint32_t *digest);
-
+//#define LOG_ARRAY
