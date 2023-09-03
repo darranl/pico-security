@@ -13,20 +13,24 @@
 @ You should have received a copy of the GNU General Public License along with pico-security.
 @ If  not, see <https://www.gnu.org/licenses/>. 
 
-@ Stack Space
+@ Stack Space:
 @
-@ ?  words = Length of text (rounded to word boundary)
+@ ?  words = Length of text (bytes rounded to word boundary)
 @ 16 words = K XOR IPAD
 @  5 words = H ( K XOR IPAD, text)
 @ 16 words = K then K XOR OPAD
-@  1 word  = Address for response
-@  1 word  = Length of test
-@  1 word  = Address of text
-@  1 word  = Length of raw key
-@  1 word  = Address of raw key 
-@  1 word  = size of stack (Make clean up eaiser)
+@  1 word  = Address of text    - Is this needed if we duplicated on stack?
+@  1 word  = Address of raw key  - Is this needed if we duplicated on stack?
+@  1 word  = Length of raw key - Is this needed?  If we process quickly we have a 64 byte key.
+@  1 word  = Length of text 
+@  1 word  = Post POP SP
 
 .equ FIXED_STACK_SPACE, 0xAC   @ 172 Bytes
+
+.equ TEXT_START_OFFSET, 0xA8 @ 168 bytes
+.equ RAW_KEY_OFFSET, 0x14 @ 20 bytes
+.equ TEXT_LENGTH_OFFSET, 0x04 
+.equ POST_POP_OFFSET, 0x00    @ Don't really need this but added for completeness.
 
 @ Start Function:
 @  extern void hmac_sha1(char *key, uint32_t key_length, char *text, uint32_t text_length, uint32_t *mac);
@@ -61,14 +65,58 @@ create_stack:
     ADD R4, R4, R5
     MOV R5, SP
     SUB R5, R5, R4
+    MOV R4, SP      @ Regrab the current stack pointer so we can cache it.
     MOV SP, R5
-    @ Now store the parameters into the reserved stack space.
-    @ Store stack size
-    @ Find and store return address
-    @ Store remainder
+    @ Store the post pop SP at SP + 0x00 i.e. SP
+    STR R4, [SP, #0x0]
+    @ Store the length of the text to the stack.
+    STR R3, [SP, #TEXT_LENGTH_OFFSET]
+    @ Store the text to the stack.
+    MOV R4, SP     
+    MOV R5, #TEXT_START_OFFSET
+    ADD R4, R4, R5             @ R4 now first address to copy text to.
+
+    @ Check length is greater than 0
+    CMP R3, #0x00
+    BLS text_copy_complete    @ Less than or equal to 0 bytes to copy
+copy_text_byte:
+    LDR R5, [R2]
+    STR R4, [R5]
+    MOV R5, #0x01
+    ADD R2, R2, R5
+    ADD R4, R4, R5
+    SUB R3, R3, R5 
+    BNE copy_text_byte   @ Length has not hit 0 go again.
+text_copy_complete:    
+    @ Just R0 and R1 in use describing the key, process the key onto the stack
+    @ Set R2 to destination for key, we can use it if we need to hash the key.
+    MOV R2, #RAW_KEY_OFFSET
+    ADD R2, R2, SP
+    CMP R1, #0x40   @ 64 bytes
+    BGT hash_the_key
+    MOV R3, #0x40    @ 64 bytes, will be used to count down how many bytes to go.    
+copy_key_byte:
+    @ R4 Temporariy hold value being copied/
+    LDR R4, [R0]
+    STR R4, [R2]
+    SUB R3, #0x01 @ Adjust counter of total bytes to process first.
+    BEQ key_copy_complete @ Hit 0 64 bytes copied, end key copying.
+    ADD R0, #0x01
+    ADD R2, #0x01
+    SUB R1, #0x01 @ Finally subtract from byes in key so we can check if we are at the end. 
+    BNE copy_key_byte    
+    MOV R4, #0x00 @ Store contant 0 in R4 as we wll use to pad the key.
+pad_key_byte:
+    STR R4, [R2]
+    ADD R2, #0x01
+    SUB R3, #0x01 @ Adjust counter of total bytes to process.
+    BNE pad_key_byte @ Not at 0, more bytes to pad.
+key_copy_complete:
     @ All registers (R0 - R5) free to be used as needed.
 
-    @ TODO Free up stack space allocated.
+    @ TODO Clear memory content of stack space allocated.
+    LDR R4, [SP, #0x0]
+    MOV SP, R4      @ This sets SP to the value immediately prior to push.
     POP {R4-R5, PC}
 
 @ R4 is not 0 so calculate padding needed.
@@ -77,4 +125,15 @@ calc_padding:
     MOV R5, #0x4
     SUB R4, R5, R4
     B create_stack
+
+@ The key is too big so hash it.
+@ R0 - First byte of key
+@ R1 - Length of key
+@ R2 - Destination of hash
+hash_the_key:
+    BL sha1_digest
+    @ TODO This will have written 20 bytes (5 words)
+    @ Adjust registers and branch to pad_key_byte to
+    @ continue padding.
+
 
