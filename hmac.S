@@ -23,7 +23,7 @@
 @  1 word  = Address of raw key  - Is this needed if we duplicated on stack?
 @  1 word  = Length of raw key - Is this needed?  If we process quickly we have a 64 byte key.
 @  1 word  = Length of text 
-@  1 word  = Post POP SP
+@  1 word  = Post PUSH SP
 
 .equ FIXED_STACK_SPACE, 0xAC   @ 172 Bytes
 
@@ -57,7 +57,7 @@
     MOV R4, #0x3        @ i.e. 0...00000011
     AND R4, R3, R4
     CMP R4, #0x0
-    BGT calc_padding
+    BGT calc_padding  @ R4 is not 0 so calculate padding needed.
 create_stack:
     @ Do the addition
     ADD R4, R4, R3
@@ -67,7 +67,7 @@ create_stack:
     SUB R5, R5, R4
     MOV R4, SP      @ Regrab the current stack pointer so we can cache it.
     MOV SP, R5
-    @ Store the post pop SP at SP + 0x00 i.e. SP
+    @ Store the post push SP at SP + 0x00 i.e. SP
     STR R4, [SP, #0x0]
     @ Store the length of the text to the stack.
     STR R3, [SP, #TEXT_LENGTH_OFFSET]
@@ -80,8 +80,8 @@ create_stack:
     CMP R3, #0x00
     BLS text_copy_complete    @ Less than or equal to 0 bytes to copy
 copy_text_byte:
-    LDR R5, [R2]
-    STR R4, [R5]
+    LDRB R5, [R2]    @ Transfer one byte at a time so order is preserved.
+    STRB R4, [R5]
     MOV R5, #0x01
     ADD R2, R2, R5
     ADD R4, R4, R5
@@ -97,17 +97,17 @@ text_copy_complete:
     MOV R3, #0x40    @ 64 bytes, will be used to count down how many bytes to go.    
 copy_key_byte:
     @ R4 Temporariy hold value being copied/
-    LDR R4, [R0]
-    STR R4, [R2]
+    LDRB R4, [R0]    @ Copy key byte at a time to preserve order.
+    STRB R4, [R2]
     SUB R3, #0x01 @ Adjust counter of total bytes to process first.
-    BEQ key_copy_complete @ Hit 0 64 bytes copied, end key copying.
+    BEQ key_copy_complete @ Hit 0 64 bytes copied, end key copying. (We know not bigger than this.)
     ADD R0, #0x01
     ADD R2, #0x01
     SUB R1, #0x01 @ Finally subtract from byes in key so we can check if we are at the end. 
     BNE copy_key_byte    
     MOV R4, #0x00 @ Store contant 0 in R4 as we wll use to pad the key.
 pad_key_byte:
-    STR R4, [R2]
+    STRB R4, [R2]
     ADD R2, #0x01
     SUB R3, #0x01 @ Adjust counter of total bytes to process.
     BNE pad_key_byte @ Not at 0, more bytes to pad.
