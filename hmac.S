@@ -93,7 +93,7 @@ text_copy_complete:
     MOV R2, #RAW_KEY_OFFSET
     ADD R2, R2, SP
     CMP R1, #0x40   @ 64 bytes
-    BGT hash_the_key
+    BGT hash_the_key  @ Will borrow R4 and R5
     MOV R3, #0x40    @ 64 bytes, will be used to count down how many bytes to go.    
 copy_key_byte:
     @ R4 Temporariy hold value being copied/
@@ -104,7 +104,11 @@ copy_key_byte:
     ADD R0, #0x01
     ADD R2, #0x01
     SUB R1, #0x01 @ Finally subtract from byes in key so we can check if we are at the end. 
-    BNE copy_key_byte    
+    BNE copy_key_byte
+    @ Entering key_padding:
+    @  R2 - Address of next destination byte.
+    @  R3 - bytes still to pad.   
+key_padding: 
     MOV R4, #0x00 @ Store contant 0 in R4 as we wll use to pad the key.
 pad_key_byte:
     STRB R4, [R2]
@@ -131,9 +135,15 @@ calc_padding:
 @ R1 - Length of key
 @ R2 - Destination of hash
 hash_the_key:
+    MOV R4, R2     @ Cache R2 in R4 as it may be modified.
     BL sha1_digest
-    @ TODO This will have written 20 bytes (5 words)
+    @ This will have written 20 bytes (5 words)
+    MOV R2, R4
+    MOV R5, #0x14   @ 20 bytes
+    ADD R2, R2, R5  @ Move address on by 20 bytes
+    MOV R3, #0x26   @ 44 bytes i.e. 64 - 20
     @ Adjust registers and branch to pad_key_byte to
     @ continue padding.
+    B key_padding
 
 
