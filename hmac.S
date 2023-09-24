@@ -15,22 +15,21 @@
 
 @ Stack Space:
 @
-@ ?  words = Length of text (bytes rounded to word boundary)
-@ 16 words = K XOR IPAD
-@  5 words = H ( K XOR IPAD, text)
-@ 16 words = K then K XOR OPAD
-@  1 word  = Address of text    - Is this needed if we duplicated on stack?
-@  1 word  = Address of raw key  - Is this needed if we duplicated on stack?
-@  1 word  = Length of raw key - Is this needed?  If we process quickly we have a 64 byte key.
-@  1 word  = Length of text 
-@  1 word  = Post PUSH SP
+@ 0x9C   ?  words = Length of text (bytes rounded to word boundary)
+@ 0x5C  16 words = K XOR IPAD (IPadded Key)
+@ 0x48   5 words = H ( K XOR IPAD, text) (Intermedate Hash)
+@ 0x08  16 words = K then K XOR OPAD
+@ 0x04   1 word  = Length of text 
+@ 0x00   1 word  = Post PUSH SP
 
-.equ FIXED_STACK_SPACE, 0xAC   @ 172 Bytes
+.equ FIXED_STACK_SPACE, 0x9C   @ 156 Bytes
 
-.equ TEXT_START_OFFSET, 0xA8 @ 168 bytes
-.equ RAW_KEY_OFFSET, 0x14 @ 20 bytes
+.equ TEXT_START_OFFSET, 0x9C @ 156 bytes
+.equ IPADDED_KEY_OFFSET, 0x5C
+.equ INTERMEDIATE_HASH_OFFSET, 0x48
+.equ RAW_KEY_OFFSET, 0x08 @ 8 bytes
 .equ TEXT_LENGTH_OFFSET, 0x04 
-.equ POST_POP_OFFSET, 0x00    @ Don't really need this but added for completeness.
+.equ POST_POP_OFFSET, 0x00
 
 @ Start Function:
 @  extern void hmac_sha1(char *key, uint32_t key_length, char *text, uint32_t text_length, uint32_t *mac);
@@ -118,10 +117,64 @@ pad_key_byte:
 key_copy_complete:
     @ All registers (R0 - R5) free to be used as needed.
 
+    @ Create Key XOR IPAD
+    MOV R0, SP     @ Set up source address
+    ADD R0, R0, #RAW_KEY_OFFSET
+    MOV R1, SP     @ Set up destination address
+    ADD R1, R1, #IPADDED_KEY_OFFSET
+    LDR R2, ipad   @ Load the IPAD mask into R2
+    BL xor_key     @ Function call (i.e. R0-R3 may be modified)
+    @ All registers (R0 - R5) free to be used as needed.
+
+    @ Call SHA-1
+    @ R0 - First byte of data
+    MOV R0, SP
+    ADD R0, R0, #IPADDED_KEY_OFFSET
+    @ R1 - Number of bytes of data
+    MOV R1, SP
+    ADD R1, R1, #TEXT_LENGTH_OFFSET
+    LDR R1, [R1]     @ We use same register as once leaded we don't need address.
+    ADD R1, R1, #0x40  @ Add the 16 words (64 bytes) of the key
+    @ R2 - Destination
+    MOV R2, SP
+    ADD R2, R2, #INTERMEDIATE_HASH_OFFSET
+    BL sha1_digest
+    @ All registers (R0 - R5) free to be used as needed.
+
+    @ Create Key XOR OPAD
+    MOV R0, SP     @ Set up source address
+    ADD R0, R0, #RAW_KEY_OFFSET
+    MOV R1, R0     @ Set up destination address (Same as source)
+    LDR R2, opad   @ Load the OPAD mask into R2
+    BL xor_key     @ Function call (i.e. R0-R3 may be modified)    
+    @ All registers (R0 - R5) free to be used as needed.
+
+    @ Call SHA-1
+    @ This time destination is address from caller.
+    @ R0 - First byte of data
+    MOV R0, SP
+    ADD R0, R0, #RAW_KEY_OFFSET
+    @ R1 - Number of bytes of data
+    MOV R1, #0x54 @ 84 bytes, i.e. 16 word opadded key + 5 word int hash.
+    @ R2 - Destination
+    MOV R2, SP  @ This is pointing to the post push offset
+    LDR R2, [R2]  @ 3 Words had been pushed by this point
+    ADD R2, R2, #0xC @ Offset 12 bytes
+    LDR R2, [R2] @ The address in R2 points to the address that holds the address of the result.
+    BL sha1_digest
+    @ All registers (R0 - R5) free to be used as needed.
+
     @ TODO Clear memory content of stack space allocated.
     LDR R4, [SP, #0x0]
     MOV SP, R4      @ This sets SP to the value immediately prior to push.
     POP {R4-R5, PC}
+
+@ Constants for IPAD and OPAD
+.align 4 
+ipad:
+    .word 0x36363636
+opad:
+    .word 0x5C5C5C5C    
 
 @ R4 is not 0 so calculate padding needed.
 @ Store the result in R4, can also use R5
@@ -145,5 +198,40 @@ hash_the_key:
     @ Adjust registers and branch to pad_key_byte to
     @ continue padding.
     B key_padding
+
+@ Start Function:
+@   xor_key:
+@
+@  XOR a 16 word key
+@
+@  TODO - Could this be a macro?
+@
+@ R0 - Source Address
+@ R1 - Dest Address
+@ R2 - Mask Value
+.thumb_func
+xor_key:
+    PUSH {R4-R5, LR}
+    @ Although manipulating words count in bytes as addresses will need
+    @ adjusting 4 bytes at a time.
+    @ R3 - Bytes Left
+    @ R4 - Current Word
+    @ R5 - Constant 0x4 
+    MOV R3, #0x40       @ 64 Bytes
+    MOV R5, #0x4
+xor_word:
+    LDR R4, [R0]
+    EOR R4, R4, R2
+    STR R4, [R1]
+    SUB R3, R3, R5
+    BEQ xor_return    @ That was last word, return.
+    @ Increment both addresses to next word.
+    ADD R0, R0, R5
+    ADD R1, R1, R5
+    B xor_word      @ Mask the next word.
+xor_return:
+    POP {R4-R5, PC}    @ Return to caller.
+@ End Function:
+@   xor_key:
 
 
