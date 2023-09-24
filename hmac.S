@@ -116,9 +116,7 @@ pad_key_byte:
 key_copy_complete:
     @ All registers (R0 - R5) free to be used as needed.
 
-    MOV R1, SP
-    ADD R1, R1, #TEXT_LENGTH_OFFSET
-    LDR R1, [R1]
+    LDR R1, [SP, #TEXT_LENGTH_OFFSET]
     ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
     MOV R0, SP
     BL log_data
@@ -132,9 +130,7 @@ key_copy_complete:
     BL xor_key     @ Function call (i.e. R0-R3 may be modified)
     @ All registers (R0 - R5) free to be used as needed.
 
-    MOV R1, SP
-    ADD R1, R1, #TEXT_LENGTH_OFFSET
-    LDR R1, [R1]
+    LDR R1, [SP, #TEXT_LENGTH_OFFSET]
     ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
     MOV R0, SP
     BL log_data
@@ -168,9 +164,7 @@ reverse_word:
     @ 32-bit ints as the result.
     @ All registers (R0 - R5) free to be used as needed.
 
-    MOV R1, SP
-    ADD R1, R1, #TEXT_LENGTH_OFFSET
-    LDR R1, [R1]
+    LDR R1, [SP, #TEXT_LENGTH_OFFSET]
     ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
     MOV R0, SP
     BL log_data
@@ -191,8 +185,7 @@ reverse_word:
     @ R1 - Number of bytes of data
     MOV R1, #0x54 @ 84 bytes, i.e. 16 word opadded key + 5 word int hash.
     @ R2 - Destination
-    MOV R2, SP  @ This is pointing to the post push offset
-    LDR R2, [R2]  @ 3 Words had been pushed by this point
+    LDR R2, [SP]  @ 3 Words had been pushed by this point
     ADD R2, R2, #0xC @ Offset 12 bytes
     LDR R2, [R2] @ The address in R2 points to the address that holds the address of the result.
     BL sha1_digest
