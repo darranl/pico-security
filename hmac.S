@@ -80,11 +80,10 @@ create_stack:
     BLS text_copy_complete    @ Less than or equal to 0 bytes to copy
 copy_text_byte:
     LDRB R5, [R2]    @ Transfer one byte at a time so order is preserved.
-    STRB R4, [R5]
-    MOV R5, #0x01
-    ADD R2, R2, R5
-    ADD R4, R4, R5
-    SUB R3, R3, R5 
+    STRB R5, [R4]
+    ADD R2, R2, #0x1
+    ADD R4, R4, #0x1
+    SUB R3, R3, #0x1
     BNE copy_text_byte   @ Length has not hit 0 go again.
 text_copy_complete:    
     @ Just R0 and R1 in use describing the key, process the key onto the stack
@@ -117,6 +116,13 @@ pad_key_byte:
 key_copy_complete:
     @ All registers (R0 - R5) free to be used as needed.
 
+    MOV R1, SP
+    ADD R1, R1, #TEXT_LENGTH_OFFSET
+    LDR R1, [R1]
+    ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
+    MOV R0, SP
+    BL log_data
+
     @ Create Key XOR IPAD
     MOV R0, SP     @ Set up source address
     ADD R0, R0, #RAW_KEY_OFFSET
@@ -126,20 +132,48 @@ key_copy_complete:
     BL xor_key     @ Function call (i.e. R0-R3 may be modified)
     @ All registers (R0 - R5) free to be used as needed.
 
+    MOV R1, SP
+    ADD R1, R1, #TEXT_LENGTH_OFFSET
+    LDR R1, [R1]
+    ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
+    MOV R0, SP
+    BL log_data
+
     @ Call SHA-1
     @ R0 - First byte of data
     MOV R0, SP
     ADD R0, R0, #IPADDED_KEY_OFFSET
     @ R1 - Number of bytes of data
-    MOV R1, SP
-    ADD R1, R1, #TEXT_LENGTH_OFFSET
-    LDR R1, [R1]     @ We use same register as once leaded we don't need address.
+    LDR R1, [SP, #TEXT_LENGTH_OFFSET]
     ADD R1, R1, #0x40  @ Add the 16 words (64 bytes) of the key
     @ R2 - Destination
     MOV R2, SP
     ADD R2, R2, #INTERMEDIATE_HASH_OFFSET
     BL sha1_digest
     @ All registers (R0 - R5) free to be used as needed.
+
+    @ SHA-1 stored hash using 32bit words, we need bytes in correct order
+    @ for ongoing hashes.
+    MOV R2, SP
+    ADD R2, R2, #INTERMEDIATE_HASH_OFFSET
+    MOV R1, #0x5   @ 5 words to reverse
+reverse_word:
+    LDR R0, [R2]
+    REV R0, R0
+    STR R0, [R2]
+    ADD R2, R2, #0x4
+    SUB R1, R1, #0x1
+    BNE reverse_word
+    @ Note: We don't need to reverse the next hash as the caller is expecting
+    @ 32-bit ints as the result.
+    @ All registers (R0 - R5) free to be used as needed.
+
+    MOV R1, SP
+    ADD R1, R1, #TEXT_LENGTH_OFFSET
+    LDR R1, [R1]
+    ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
+    MOV R0, SP
+    BL log_data
 
     @ Create Key XOR OPAD
     MOV R0, SP     @ Set up source address
