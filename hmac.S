@@ -119,7 +119,7 @@ key_copy_complete:
     LDR R1, [SP, #TEXT_LENGTH_OFFSET]
     ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
     MOV R0, SP
-    BL log_data
+    BL log_data  @ All data is copied, key is copied or hashed and padded.
 
     @ Create Key XOR IPAD
     MOV R0, SP     @ Set up source address
@@ -133,7 +133,7 @@ key_copy_complete:
     LDR R1, [SP, #TEXT_LENGTH_OFFSET]
     ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
     MOV R0, SP
-    BL log_data
+    BL log_data @ iPad applied
 
     @ Call SHA-1
     @ R0 - First byte of data
@@ -167,7 +167,7 @@ reverse_word:
     LDR R1, [SP, #TEXT_LENGTH_OFFSET]
     ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
     MOV R0, SP
-    BL log_data
+    BL log_data @ Frst hash complete
 
     @ Create Key XOR OPAD
     MOV R0, SP     @ Set up source address
@@ -219,9 +219,20 @@ hash_the_key:
     BL sha1_digest
     @ This will have written 20 bytes (5 words)
     MOV R2, R4
-    MOV R5, #0x14   @ 20 bytes
-    ADD R2, R2, R5  @ Move address on by 20 bytes
-    MOV R3, #0x26   @ 44 bytes i.e. 64 - 20
+
+    MOV R1, #0x5   @ 5 words to reverse
+reverse_word2:
+    LDR R0, [R2]
+    REV R0, R0
+    STR R0, [R2]
+    ADD R2, R2, #0x4
+    SUB R1, R1, #0x1
+    BNE reverse_word2
+
+
+    @MOV R5, #0x14   @ 20 bytes
+    @ADD R2, R2, R5  @ Move address on by 20 bytes
+    MOV R3, #0x2C   @ 44 bytes i.e. 64 - 20
     @ Adjust registers and branch to pad_key_byte to
     @ continue padding.
     B key_padding
