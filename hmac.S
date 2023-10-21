@@ -13,6 +13,8 @@
 @ You should have received a copy of the GNU General Public License along with pico-security.
 @ If  not, see <https://www.gnu.org/licenses/>. 
 
+#include "hmac-debug.h"
+
 @ Stack Space:
 @
 @ 0x9C   ?  words = Length of text (bytes rounded to word boundary)
@@ -116,11 +118,13 @@ pad_key_byte:
 key_copy_complete:
     @ All registers (R0 - R5) free to be used as needed.
 
+    #ifdef LOG_DATA
     LDR R1, [SP, #TEXT_LENGTH_OFFSET]
     ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
     MOV R0, SP
     BL log_data  @ All data is copied, key is copied or hashed and padded.
-
+    #endif
+    
     @ Create Key XOR IPAD
     MOV R0, SP     @ Set up source address
     ADD R0, R0, #RAW_KEY_OFFSET
@@ -130,10 +134,12 @@ key_copy_complete:
     BL xor_key     @ Function call (i.e. R0-R3 may be modified)
     @ All registers (R0 - R5) free to be used as needed.
 
+    #ifdef LOG_DATA
     LDR R1, [SP, #TEXT_LENGTH_OFFSET]
     ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
     MOV R0, SP
     BL log_data @ iPad applied
+    #endif
 
     @ Call SHA-1
     @ R0 - First byte of data
@@ -164,10 +170,12 @@ reverse_word:
     @ 32-bit ints as the result.
     @ All registers (R0 - R5) free to be used as needed.
 
+    #ifdef LOG_DATA
     LDR R1, [SP, #TEXT_LENGTH_OFFSET]
     ADD R1, R1, #0x9C  @ This is the total length of stack we allocated
     MOV R0, SP
     BL log_data @ Frst hash complete
+    #endif
 
     @ Create Key XOR OPAD
     MOV R0, SP     @ Set up source address
