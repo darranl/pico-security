@@ -13,6 +13,18 @@
 @ You should have received a copy of the GNU General Public License along with pico-security.
 @ If  not, see <https://www.gnu.org/licenses/>. 
 
+#include "hardware/regs/addressmap.h"
+#include "hardware/regs/sio.h"
+
+.macro divider_delay
+      // delay 8 cycles
+      b   1f
+1:    b   1f
+1:    b   1f
+1:    b   1f
+1:
+.endm
+
 @ Stack Space
 @ 
 @ 0x08  5 Words - Calculated HMAC
@@ -20,7 +32,7 @@
 
 .equ STACK_SPACE, 0x1C  @ 7 words / 28 bytes
 
-.equ OTP_ADDRESS_OFFSET, 0x00  @ TODO Calculate once we know how much was pushed.
+.equ OTP_ADDRESS_OFFSET, 0x20  @ Assuming we only pushed one register.
 .equ HMAC_OFFSET, 0x08
 .equ BYTE_COUNT_LSB_OFFSET, 0x04
 .equ BYTE_COUNT_MSB_OFFSET, 0x00
@@ -86,5 +98,52 @@ reverse_word:
     ADD R1, #0x8
     BL log_data  @ All data is copied, key is copied or hashed and padded.
     
+    @ Calculate truncated HMAC
+    ADD R0, SP, #HMAC_OFFSET        
+    LDRB R1, [R0, #0x13]    @ Load Byte 19 
+    MOV R2, #0x4
+    AND R1, R1, R2         @ Mask R1 so it contains last 4 bits
+    ADD R0, R0, R1         @ Now R0 points to the first byte we will include in the truncated HMAC
+
+    MOV R1, #0x4           @ 4 bytes to process
+load_byte:
+    LDRB R2, [R0]
+    LSL R3, #0x8
+    ORR R3, R2, R3
+    ADD R0, R0, #0x1
+    SUB R1, R1, #0x1
+    BNE load_byte
+    @ Now R3 contains the truncated HMAC, need to drop most significiant bit
+    LDR R2, msb_mask
+    AND R3, R3, R2
+    @ Calculate HMAC mod 1,000,000 - only R3 in use.
+    @ Going to skip the mod step as it appears the best
+    @ approach to convert to decimal digits is divide by 10. 6 times.
+
+    @ Set the divisor to 10 once as will be the same for all digits.
+    MOV R0, #0xA
+    LDR R2, =SIO_BASE
+    STR R0, [R2, #SIO_DIV_UDIVISOR_OFFSET]
+
+    @ Convert result into separate digits in result array
+    @ R0 - Base address of result array.
+    LDR R0, [SP, #OTP_ADDRESS_OFFSET]
+    @ R1 - Digits to convert
+    MOV R1, #0x5              @ Hard code 5 for now (0 to 5)
+extract_digit:
+    STR R3, [R2, #SIO_DIV_UDIVIDEND_OFFSET]
+    divider_delay
+    LDR R3, [R2, #SIO_DIV_REMAINDER_OFFSET]
+    STRB R3, [R0, R1]
+    LDR R3, [R2, #SIO_DIV_QUOTIENT_OFFSET]  @ Also clears any CSR dirty flag.
+    SUB R1, R1, #0x1
+    BPL extract_digit     @ If zero or above keep going.
+    
     ADD SP, #STACK_SPACE
     POP {PC}
+
+.align 4
+msb_mask:
+    .word 0x7FFFFFFF
+
+    

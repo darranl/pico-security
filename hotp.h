@@ -25,6 +25,6 @@
  *     shared_secret - Pointer to char array containing the shared secret.
  *     secret_length - Length of the shared secret.
  *     counter       - Current count value (8 bytes).
- *     result        - Pointer to 6 element short array to return the result.
+ *     result        - Pointer to 6 element byte array to return the result.
  */
-extern void calculate_hotp(char *shared_secret, uint32_t secret_length, uint64_t counter, short *result);
+extern void calculate_hotp(char *shared_secret, uint32_t secret_length, uint64_t counter, char *result);
