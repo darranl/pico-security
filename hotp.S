@@ -101,7 +101,7 @@ reverse_word:
     @ Calculate truncated HMAC
     ADD R0, SP, #HMAC_OFFSET        
     LDRB R1, [R0, #0x13]    @ Load Byte 19 
-    MOV R2, #0x4
+    MOV R2, #0xf
     AND R1, R1, R2         @ Mask R1 so it contains last 4 bits
     ADD R0, R0, R1         @ Now R0 points to the first byte we will include in the truncated HMAC
 
@@ -138,7 +138,7 @@ extract_digit:
     LDR R3, [R2, #SIO_DIV_QUOTIENT_OFFSET]  @ Also clears any CSR dirty flag.
     SUB R1, R1, #0x1
     BPL extract_digit     @ If zero or above keep going.
-    
+
     ADD SP, #STACK_SPACE
     POP {PC}
 
