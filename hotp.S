@@ -15,6 +15,7 @@
 
 #include "hardware/regs/addressmap.h"
 #include "hardware/regs/sio.h"
+#include "data-debug.h"
 
 .macro divider_delay
       // delay 8 cycles
@@ -74,11 +75,13 @@
     ADD SP, #0x4  @ Restore SP after HMAC call.
     @ R0 to R3 are now all free for further use.
 
+#ifdef LOG_DATA
     @ Log the stack space.
     MOV R0, SP
     MOV R1, #STACK_SPACE
     ADD R1, #0x8
     BL log_data  @ All data is copied, key is copied or hashed and padded.
+#endif 
 
     @ Reverse bytes in calculated HMAC as next step operates on bytes in order.
     MOV R2, SP
@@ -92,11 +95,13 @@ reverse_word:
     SUB R1, R1, #0x1
     BNE reverse_word
 
+#ifdef LOG_DATA
     @ Log the stack space.
     MOV R0, SP
     MOV R1, #STACK_SPACE
     ADD R1, #0x8
     BL log_data  @ All data is copied, key is copied or hashed and padded.
+#endif
     
     @ Calculate truncated HMAC
     ADD R0, SP, #HMAC_OFFSET        
